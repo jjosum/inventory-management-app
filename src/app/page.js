@@ -3,7 +3,9 @@
 import { useState, useEffect } from 'react'
 import { Box, Stack, Typography, Button, Modal, TextField } from '@mui/material'
 import { firestore } from './firebase.js'
+
 import {
+  onSnapshot,
   collection,
   doc,
   getDocs,
@@ -32,10 +34,9 @@ const style = {
 export default function Home() {
   // We'll add our component logic here
 
-  const [inventory, setInventory] = useState([])
-  const [open, setOpen] = useState(false)
   const [itemName, setItemName] = useState('')
-
+  const [open, setOpen] = useState(false)
+  const [inventory, setInventory] = useState([])
 
   const updateInventory = async () => {
     const snapshot = query(collection(firestore, 'inventory'))
@@ -48,37 +49,62 @@ export default function Home() {
   }
 
   useEffect(() => {
+    const unsubscribe = onSnapshot(
+      query(collection(firestore, 'inventory')),
+      (snapshot) => {
+        const inventoryList = snapshot.docs.map(doc => ({ name: doc.id, ...doc.data() }));
+        setInventory(inventoryList);
+      },
+      (error) => {
+        console.error("Error fetching inventory:", error);
+      }
+    );
+  
+    return () => unsubscribe();
+  }, []);
+
+
+  useEffect(() => {
     updateInventory()
   }, [])
 
+  const handleOpen = () => setOpen(true)
+  const handleClose = () => setOpen(false)
+
   const addItem = async (item) => {
-    const docRef = doc(collection(firestore, 'inventory'), item)
-    const docSnap = await getDoc(docRef)
-    if (docSnap.exists()) {
-      const { quantity } = docSnap.data()
-      await setDoc(docRef, { quantity: quantity + 1 })
-    } else {
-      await setDoc(docRef, { quantity: 1 })
+    try {
+      const docRef = doc(collection(firestore, 'inventory'), item);
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        const { quantity } = docSnap.data();
+        await setDoc(docRef, { quantity: quantity + 1 });
+      } else {
+        await setDoc(docRef, { quantity: 1 });
+      }
+      await updateInventory();
+    } catch (error) {
+      console.error("Error adding item:", error);
     }
-    await updateInventory()
   }
 
   const removeItem = async (item) => {
-    const docRef = doc(collection(firestore, 'inventory'), item)
-    const docSnap = await getDoc(docRef)
-    if (docSnap.exists()) {
-      const { quantity } = docSnap.data()
-      if (quantity === 1) {
-        await deleteDoc(docRef)
-      } else {
-        await setDoc(docRef, { quantity: quantity - 1 })
+    try{
+      const docRef = doc(collection(firestore, 'inventory'), item)
+      const docSnap = await getDoc(docRef)
+      if (docSnap.exists()) {
+        const { quantity } = docSnap.data()
+        if (quantity === 1) {
+          await deleteDoc(docRef)
+        } else {
+          await setDoc(docRef, { quantity: quantity - 1 })
+        }
       }
+      await updateInventory()
+    } catch (error){
+      console.error("Error removing item:", error);
     }
-    await updateInventory()
+    
   }
-
-  const handleOpen = () => setOpen(true)
-  const handleClose = () => setOpen(false)
 
   return (
     <Box
